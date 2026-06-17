@@ -165,14 +165,28 @@ List all the installed packages and also the packages bundled with Atom.\
     async listBundledPackages(options) {
       const resourcePath = await config.getResourcePath();
       let atomPackages;
+      let packagesMeta;
       try {
         const metadataPath = path.join(resourcePath, 'package.json');
-        ({_atomPackages: atomPackages} = JSON.parse(fs.readFileSync(metadataPath)));
+        const packageJSON = JSON.parse(fs.readFileSync(metadataPath));
+        atomPackages = packageJSON._atomPackages;
+        if (!atomPackages && packageJSON.packageDependencies) {
+          packagesMeta = Object.keys(packageJSON.packageDependencies)
+            .map(name => {
+              try {
+                return JSON.parse(fs.readFileSync(path.join(resourcePath, 'node_modules', name, 'package.json')));
+              } catch (_) { return null; }
+            })
+            .filter(Boolean)
+            .filter(metadata => this.isPackageVisible(options, metadata));
+        }
       } catch (error) {}
-      atomPackages ??= {};
-      const packagesMeta = Object.values(atomPackages)
-        .map(packageValue => packageValue.metadata)
-        .filter(metadata => this.isPackageVisible(options, metadata));
+      if (!packagesMeta) {
+        atomPackages ??= {};
+        packagesMeta = Object.values(atomPackages)
+          .map(packageValue => packageValue.metadata)
+          .filter(metadata => this.isPackageVisible(options, metadata));
+      }
 
       if (!options.argv.bare && !options.argv.json) {
         console.log(`${`Built-in Atom ${options.argv.themes ? 'Themes' : 'Packages'}`.cyan} (${packagesMeta.length})`);
